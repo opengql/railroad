@@ -1,0 +1,71 @@
+name: Deploy application
+
+on:
+  workflow_dispatch:
+
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  GRAMMAR_REPOSITORY_TOKEN: ${{ secrets.GRAMMAR_REPOSITORY_TOKEN }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup git user
+        uses: fregante/setup-git-user@v2
+
+      - name: Setup Java environment
+        uses: actions/setup-java@v2
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+
+      - name: Setup HTML Tidy
+        run: sudo apt-get update && sudo apt-get install -y tidy
+
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.x'
+
+      - name: Setup RR diagrams library
+        run: |
+          git clone https://github.com/bkiers/rrd-antlr4.git rrd
+          cd ./rrd
+          mvn clean package
+          cd ..
+
+      - name: Download GQL grammar file
+        run: |
+          run: |
+          if [ ! -d "./tmp" ]; then
+            mkdir -p ./tmp
+          fi
+          wget --quiet --show-progress --header="Authorization: Bearer $GRAMMAR_REPOSITORY_TOKEN" -O ./tmp/GQL.g4 \
+            https://raw.githubusercontent.com/opengql/grammar/main/GQL.g4
+
+      - name: Generate RR diagrams
+        run: |
+          if [ ! -d "./build" ]; then
+            mkdir -p ./build
+          fi
+          java -jar ./rrd/target/rrd-antlr4-0.1.2.jar ./tmp/GQL.g4
+          cp output/GQL/index.html build/index.html
+          rm -r output
+
+      - name: Clean up generated HTML
+        run: |
+          tidy -q --tidy-mark no -ashtml --doctype html5 ./build/index.html > ./build/temp.html 2> /dev/null || true
+          rm ./build/index.html
+          python3 local_scripts/clean.py ./build/temp.html > ./build/index.html
+          rm ./build/temp.html
+
+      - name: Deploy to GitHub Pages
+        if: steps.check_tag.outputs.should_create == 'true'
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./build
