@@ -64,7 +64,6 @@ jobs:
           rm ./build/temp.html
 
       - name: Deploy to GitHub Pages
-        if: steps.check_tag.outputs.should_create == 'true'
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
